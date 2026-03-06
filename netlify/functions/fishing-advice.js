@@ -13,7 +13,7 @@ exports.handler = async (event, context) => {
 
     // 2. 使用 Netlify 环境变量中的 API Key 初始化 AI (绝对安全)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // 填入你使用的模型
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // 填入你使用的模型
 
     // 3. 拼接给 AI 的提示词 (Prompt)
     const prompt = `结合【${fishingMode}】和目标鱼【${targetFish}】，以及当前气压 ${weather?.pressure}，给出一份钓鱼攻略和开饵配方。`;
