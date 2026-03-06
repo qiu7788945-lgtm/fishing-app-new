@@ -7,67 +7,44 @@ exports.handler = async (event, context) => {
     'Access-Control-Allow-Methods': 'POST, OPTIONS'
   };
 
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
-  }
-
-  const apiKey = (process.env.GEMINI_API_KEY || '').replace(/^["']|["']$/g, '').trim();
-  if (!apiKey) {
-    return { statusCode: 500, headers, body: '系统错误：未在 Netlify 后台配置 API 密钥' };
-  }
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
 
   try {
+    const apiKey = (process.env.GEMINI_API_KEY || '').replace(/^["']|["']$/g, '').trim();
+    if (!apiKey) return { statusCode: 500, headers, body: '未配置 API 密钥' };
+
     const genAI = new GoogleGenerativeAI(apiKey);
+    
+    // 【提速核心】锁定成功连通的 2.0 模型，并强制限制输出字数，防止 30 秒超时
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.0-flash",
+      generationConfig: { maxOutputTokens: 500 } // 强行限制字数，让它在5秒内吐出结果
+    });
+
     const { fishingMode, targetFish, weather, imagePreview, mimeType } = JSON.parse(event.body);
 
-    let prompt = `你现在是一位拥有20年经验的钓鱼大师。
-请求分析：
-- 作钓模式：【${fishingMode}】
-- 目标鱼：【${targetFish}】
-- 当前气象：气温 ${weather?.temperature}°C，气压 ${weather?.pressure}hPa，风速 ${weather?.windSpeed}km/h。
-
-请给出一段专业的爆护攻略，必须包含以下结构：
-1. 气象分析与出钓建议
-2. 钓位选择与水深建议
-3. 线组与浮漂调钓建议
-4. 【核心开饵配方】(请以此为标题，并用无序列表列出饵料名称)`;
+    // 极简提示词，要求直奔主题
+    let prompt = `你是一位大师。模式【${fishingMode}】，目标【${targetFish}】，气压${weather?.pressure}hPa。
+请简明扼要（总字数200字内），包含：
+1. 气象出钓建议
+2. 钓位水深
+3. 线组调钓
+4. 【核心开饵配方】(仅列出无序列表)`;
 
     let requestItems = [prompt];
+    
+    // 如果有图片，带着图片一起发
     if (imagePreview) {
-      const base64Data = imagePreview.split(',')[1];
       requestItems.push({
         inlineData: {
-          data: base64Data,
+          data: imagePreview.split(',')[1],
           mimeType: mimeType || 'image/jpeg'
         }
       });
-      requestItems[0] += "\n\n我还上传了钓点实勘图，请结合图片的地形、水情推荐钓位！";
     }
 
-    // 核心修复：1.5系列已被谷歌删除，必须使用 2.5 或 2.0 系列最新存活模型
-    const modelsToTry = [
-      "gemini-2.5-flash", 
-      "gemini-2.0-flash", 
-      "gemini-flash-latest"
-    ];
-    
-    let lastError = null;
-    let result = null;
-
-    for (const modelName of modelsToTry) {
-        try {
-            const model = genAI.getGenerativeModel({ model: modelName });
-            result = await model.generateContent(requestItems);
-            if (result) break; // 成功则立刻跳出循环
-        } catch (err) {
-            console.log(`尝试模型 ${modelName} 失败:`, err.message);
-            lastError = err;
-        }
-    }
-
-    if (!result) {
-        throw new Error(`所有新版模型均拒绝访问。最后错误: ${lastError?.message}`);
-    }
+    // 发起请求
+    const result = await model.generateContent(requestItems);
 
     return {
       statusCode: 200,
@@ -76,7 +53,7 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error("AI 接口报错:", error);
-    return { statusCode: 500, headers, body: `抱歉，大师推演失败。错误详情: ${error.message}` };
+    console.error("AI报错:", error.message);
+    return { statusCode: 500, headers, body: `服务器超时或崩溃: ${error.message}` };
   }
 };
