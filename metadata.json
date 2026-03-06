@@ -1,0 +1,7 @@
+{
+  "name": "Fishing Weather",
+  "description": "A weather app optimized for fishing, providing temperature, pressure, and wind data.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
